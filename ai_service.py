@@ -26,9 +26,3 @@ def analyze_support_message(message: str) -> dict:
         "priority": priority,
     }
 
-if __name__ == "__main__":
-    result = analyze_support_message(
-        'My order has not arrived.'
-    )
-
-    print(result)

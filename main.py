@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ai_service import analyze_support_message
 from database import get_db
 from models import Ticket
 
@@ -10,7 +11,7 @@ from models import Ticket
 app = FastAPI(
     title="AI Business Operations Platform",
     description="AI-powered customer support and business operations platform.",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
@@ -26,6 +27,8 @@ class SupportResponse(BaseModel):
     customer_name: str
     email: str
     message_received: str
+    category: str
+    priority: str
 
 
 @app.get("/")
@@ -41,10 +44,14 @@ def create_support_ticket(
     request: SupportRequest,
     db: Session = Depends(get_db),
 ):
+    analysis = analyze_support_message(request.message)
+
     ticket = Ticket(
         customer_name=request.customer_name,
         email=request.email,
         message=request.message,
+        category=analysis["category"],
+        priority=analysis["priority"],
     )
 
     db.add(ticket)
@@ -57,6 +64,8 @@ def create_support_ticket(
         customer_name=ticket.customer_name,
         email=ticket.email,
         message_received=ticket.message,
+        category=ticket.category,
+        priority=ticket.priority,
     )
 
 
@@ -75,6 +84,8 @@ def get_tickets(
             customer_name=ticket.customer_name,
             email=ticket.email,
             message_received=ticket.message,
+            category=ticket.category,
+            priority=ticket.priority,
         )
         for ticket in tickets
     ]
