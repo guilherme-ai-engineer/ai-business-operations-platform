@@ -1,11 +1,16 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from database import get_db
+from models import Ticket
 
 
 app = FastAPI(
     title="AI Business Operations Platform",
     description="AI-powered customer support and business operations platform.",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 
@@ -23,9 +28,6 @@ class SupportResponse(BaseModel):
     message_received: str
 
 
-tickets = []
-
-
 @app.get("/")
 def home():
     return {
@@ -35,22 +37,44 @@ def home():
 
 
 @app.post("/support", response_model=SupportResponse)
-def create_support_ticket(request: SupportRequest):
-    ticket_id = len(tickets) + 1
-
-    ticket = SupportResponse(
-        ticket_id=ticket_id,
-        status="received",
+def create_support_ticket(
+    request: SupportRequest,
+    db: Session = Depends(get_db),
+):
+    ticket = Ticket(
         customer_name=request.customer_name,
         email=request.email,
-        message_received=request.message,
+        message=request.message,
     )
 
-    tickets.append(ticket)
+    db.add(ticket)
+    db.commit()
+    db.refresh(ticket)
 
-    return ticket
+    return SupportResponse(
+        ticket_id=ticket.id,
+        status=ticket.status,
+        customer_name=ticket.customer_name,
+        email=ticket.email,
+        message_received=ticket.message,
+    )
 
 
-@app.get("/tickets")
-def get_tickets():
-    return tickets
+@app.get("/tickets", response_model=list[SupportResponse])
+def get_tickets(
+    db: Session = Depends(get_db),
+):
+    tickets = db.scalars(
+        select(Ticket).order_by(Ticket.id)
+    ).all()
+
+    return [
+        SupportResponse(
+            ticket_id=ticket.id,
+            status=ticket.status,
+            customer_name=ticket.customer_name,
+            email=ticket.email,
+            message_received=ticket.message,
+        )
+        for ticket in tickets
+    ]
