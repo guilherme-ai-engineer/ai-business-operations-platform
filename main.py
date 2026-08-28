@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from agent_service import (
 from ai_service import analyze_support_message
 from auth_service import (
     create_access_token,
+    decode_access_token,
     hash_password,
     verify_password,
 )
@@ -90,6 +92,56 @@ app = FastAPI(
     version="0.5.0",
     openapi_tags=TAGS_METADATA,
 )
+
+security = HTTPBearer()
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    token = credentials.credentials
+
+    payload = decode_access_token(
+        token
+    )
+
+    if payload is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token.",
+        )
+
+    user_id = payload.get("sub")
+
+    if user_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication token.",
+        )
+
+    try:
+        user_id = int(user_id)
+
+    except ValueError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication token.",
+        )
+
+    user = db.scalar(
+        select(User).where(
+            User.id == user_id
+        )
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found.",
+        )
+
+    return user
 
 
 class RegisterRequest(BaseModel):
@@ -425,7 +477,7 @@ async def upload_document(
     summary="Create a new conversation",
 )
 def create_conversation(
-    request: ConversationCreateRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     conversation_id = str(
@@ -434,11 +486,7 @@ def create_conversation(
 
     conversation = Conversation(
         id=conversation_id,
-        customer_email=(
-            request.customer_email
-            .strip()
-            .lower()
-        ),
+        customer_email=current_user.email,
         title="New conversation",
     )
 
