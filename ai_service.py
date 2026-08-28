@@ -1,6 +1,6 @@
 import json
 import os
-from rag_service import retrieve_relevant_document
+from rag_service import retrieve_relevant_chunks
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -19,7 +19,19 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 def analyze_support_message(message: str) -> dict:
-    relevant_document = retrieve_relevant_document(message)
+    relevant_chunks = retrieve_relevant_chunks(
+        message,
+        top_k=3,
+    )
+
+    policy_context = "\n\n".join(
+        (
+            f"Source: {chunk['source']} "
+            f"(chunk {chunk['chunk_index']})\n"
+            f"{chunk['content']}"
+        )
+        for chunk in relevant_chunks
+    )
     response = client.responses.create(
         model=OPENAI_MODEL,
         instructions=(
@@ -36,8 +48,8 @@ def analyze_support_message(message: str) -> dict:
         ),
         input=(
             f"Customer message:\n{message}\n\n"
-            f"Company policy source:\n{relevant_document['source']}\n\n"
-            f"Company policy:\n{relevant_document['content']}"
+            f"Relevant company policy excerpts:\n\n"
+            f"{policy_context}"
         ),
         text={
             "format": {
@@ -83,6 +95,12 @@ def analyze_support_message(message: str) -> dict:
 
     result = json.loads(response.output_text)
 
-    result["knowledge_source"] = relevant_document["source"]
+    sources = []
+
+    for chunk in relevant_chunks:
+        if chunk["source"] not in sources:
+            sources.append(chunk["source"])
+
+    result["knowledge_source"] = ", ".join(sources)
 
     return result

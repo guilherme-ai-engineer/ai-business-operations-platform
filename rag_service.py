@@ -17,7 +17,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 KNOWLEDGE_BASE_DIR = Path("knowledge_base")
 EMBEDDING_MODEL = "text-embedding-3-small"
-MAX_CHUNK_SIZE = 500
+MAX_CHUNK_SIZE = 180
 
 _knowledge_index = None
 
@@ -125,13 +125,15 @@ def get_knowledge_index() -> list[dict]:
     return _knowledge_index
 
 
-def retrieve_relevant_document(query: str) -> dict:
+def retrieve_relevant_chunks(
+    query: str,
+    top_k: int = 3,
+) -> list[dict]:
     query_embedding = get_embedding(query)
 
     knowledge_index = get_knowledge_index()
 
-    best_chunk = None
-    best_score = -1.0
+    results = []
 
     for chunk in knowledge_index:
         score = cosine_similarity(
@@ -139,25 +141,31 @@ def retrieve_relevant_document(query: str) -> dict:
             chunk["embedding"],
         )
 
-        if score > best_score:
-            best_score = score
-            best_chunk = chunk
+        results.append(
+            {
+                "source": chunk["source"],
+                "chunk_index": chunk["chunk_index"],
+                "content": chunk["content"],
+                "score": score,
+            }
+        )
 
-    return {
-        "source": best_chunk["source"],
-        "chunk_index": best_chunk["chunk_index"],
-        "content": best_chunk["content"],
-        "score": best_score,
-    }
-
-
-if __name__ == "__main__":
-    result = retrieve_relevant_document(
-        "How long does a refund take?"
+    results.sort(
+        key=lambda item: item["score"],
+        reverse=True,
     )
 
-    print("Source:", result["source"])
-    print("Chunk:", result["chunk_index"])
-    print("Score:", result["score"])
-    print()
-    print(result["content"])
+    return results[:top_k]
+
+if __name__ == "__main__":
+    results = retrieve_relevant_chunks(
+        "How long does a refund take?",
+        top_k=3,
+    )
+
+    for result in results:
+        print("Source:", result["source"])
+        print("Chunk:", result["chunk_index"])
+        print("Score:", result["score"])
+        print(result["content"])
+        print("-" * 50)
