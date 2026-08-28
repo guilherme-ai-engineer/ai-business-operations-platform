@@ -35,3 +35,41 @@ def get_order_status(
 
     finally:
         db.close()
+
+def get_customer_orders(
+    customer_email: str,
+) -> dict:
+    db = SessionLocal()
+
+    try:
+        orders = db.scalars(
+            select(Order)
+            .where(
+                Order.customer_email == customer_email
+            )
+            .order_by(Order.id)
+        ).all()
+
+        if not orders:
+            return {
+                "found": False,
+                "message": "No orders were found for this customer.",
+            }
+
+        return {
+            "found": True,
+            "orders": [
+                {
+                    "order_id": order.id,
+                    "status": order.status,
+                    "total_amount": float(order.total_amount),
+                    "estimated_delivery": order.estimated_delivery,
+                }
+                for order in orders
+            ],
+        }
+
+    finally:
+        db.close()
+
+
