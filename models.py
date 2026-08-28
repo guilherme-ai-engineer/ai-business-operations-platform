@@ -1,7 +1,7 @@
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Numeric, Integer, String, Text, func
-
+from sqlalchemy import DateTime, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -9,12 +9,6 @@ from database import Base
 
 class Ticket(Base):
     __tablename__ = "tickets"
-
-    knowledge_source: Mapped[str] = mapped_column(
-        String(255),
-        default="",
-        nullable=False,
-    )
 
     id: Mapped[int] = mapped_column(
         Integer,
@@ -61,15 +55,9 @@ class Ticket(Base):
         nullable=False,
     )
 
-    category: Mapped[str] = mapped_column(
-        String(50),
-        default="general",
-        nullable=False,
-    )
-
-    priority: Mapped[str] = mapped_column(
-        String(20),
-        default="low",
+    knowledge_source: Mapped[str] = mapped_column(
+        String(255),
+        default="",
         nullable=False,
     )
 
@@ -81,39 +69,68 @@ class Ticket(Base):
 
 
 class Order(Base):
-        __tablename__ = "orders"
+    __tablename__ = "orders"
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-            index=True,
-        )
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
 
-        customer_email: Mapped[str] = mapped_column(
-            String(200),
-            nullable=False,
-        )
+    customer_email: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        index=True,
+    )
 
-        status: Mapped[str] = mapped_column(
-            String(50),
-            nullable=False,
-        )
+    status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
 
-        total_amount = mapped_column(
-            Numeric(10, 2),
-            nullable=False,
-        )
+    total_amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+    )
 
-        estimated_delivery: Mapped[str] = mapped_column(
-            String(30),
-            nullable=False,
-        )
+    estimated_delivery: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+    )
 
-        created_at: Mapped[datetime] = mapped_column(
-            DateTime,
-            server_default=func.now(),
-            nullable=False,
-        )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(
+        String(100),
+        primary_key=True,
+    )
+
+    customer_email: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        index=True,
+    )
+
+    title: Mapped[str] = mapped_column(
+        String(200),
+        default="New conversation",
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+
 
 class ConversationMessage(Base):
     __tablename__ = "conversation_messages"
@@ -152,23 +169,25 @@ class ConversationMessage(Base):
         nullable=False,
     )
 
-class Conversation(Base):
-    __tablename__ = "conversations"
 
-    id: Mapped[str] = mapped_column(
-        String(100),
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
         primary_key=True,
+        index=True,
     )
 
-    customer_email: Mapped[str] = mapped_column(
+    email: Mapped[str] = mapped_column(
         String(200),
+        unique=True,
         nullable=False,
         index=True,
     )
 
-    title: Mapped[str] = mapped_column(
-        String(200),
-        default="New conversation",
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
     )
 

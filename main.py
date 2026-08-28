@@ -12,9 +12,19 @@ from agent_service import (
     run_order_agent,
 )
 from ai_service import analyze_support_message
+from auth_service import (
+    create_access_token,
+    hash_password,
+    verify_password,
+)
 from conversation_service import get_conversation_messages
 from database import get_db
-from models import Conversation, ConversationMessage, Ticket
+from models import (
+    Conversation,
+    ConversationMessage,
+    Ticket,
+    User,
+)
 from rag_service import invalidate_knowledge_index
 
 
@@ -27,7 +37,16 @@ MAX_DOCUMENT_SIZE = 10_000_000
 TAGS_METADATA = [
     {
         "name": "System",
-        "description": "API health and system information.",
+        "description": (
+            "API health and system information."
+        ),
+    },
+    {
+        "name": "Authentication",
+        "description": (
+            "User registration, login, "
+            "and JWT authentication."
+        ),
     },
     {
         "name": "Support",
@@ -39,13 +58,15 @@ TAGS_METADATA = [
     {
         "name": "Knowledge Base",
         "description": (
-            "Upload company documents used by the RAG system."
+            "Upload company documents "
+            "used by the RAG system."
         ),
     },
     {
         "name": "Conversations",
         "description": (
-            "Create, list, and retrieve customer conversations."
+            "Create, list, rename, delete, "
+            "and retrieve customer conversations."
         ),
     },
     {
@@ -63,15 +84,38 @@ app = FastAPI(
     description=(
         "AI-powered customer support platform with "
         "RAG, PostgreSQL, persistent conversation memory, "
-        "document ingestion, and AI tool calling."
+        "document ingestion, AI tool calling, "
+        "and JWT authentication."
     ),
-    version="0.4.0",
+    version="0.5.0",
     openapi_tags=TAGS_METADATA,
 )
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
+class RegisterResponse(BaseModel):
+    user_id: int
+    email: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+
 
 class ConversationRenameRequest(BaseModel):
     customer_email: str
     title: str
+
 
 class ConversationMessageResponse(BaseModel):
     role: str
@@ -131,6 +175,100 @@ def home():
         "app": "AI Business Operations Platform",
         "status": "running",
     }
+
+
+@app.post(
+    "/auth/register",
+    response_model=RegisterResponse,
+    tags=["Authentication"],
+    summary="Register a new user",
+)
+def register_user(
+    request: RegisterRequest,
+    db: Session = Depends(get_db),
+):
+    email = request.email.strip().lower()
+
+    if len(request.password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Password must contain "
+                "at least 8 characters."
+            ),
+        )
+
+    existing_user = db.scalar(
+        select(User).where(
+            User.email == email
+        )
+    )
+
+    if existing_user is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "A user with this email "
+                "already exists."
+            ),
+        )
+
+    user = User(
+        email=email,
+        password_hash=hash_password(
+            request.password
+        ),
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return RegisterResponse(
+        user_id=user.id,
+        email=user.email,
+    )
+
+
+@app.post(
+    "/auth/login",
+    response_model=TokenResponse,
+    tags=["Authentication"],
+    summary="Login and receive a JWT token",
+)
+def login_user(
+    request: LoginRequest,
+    db: Session = Depends(get_db),
+):
+    email = request.email.strip().lower()
+
+    user = db.scalar(
+        select(User).where(
+            User.email == email
+        )
+    )
+
+    if (
+        user is None
+        or not verify_password(
+            request.password,
+            user.password_hash,
+        )
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password.",
+        )
+
+    access_token = create_access_token(
+        user_id=user.id,
+        email=user.email,
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+    )
 
 
 @app.post(
@@ -296,7 +434,11 @@ def create_conversation(
 
     conversation = Conversation(
         id=conversation_id,
-        customer_email=request.customer_email,
+        customer_email=(
+            request.customer_email
+            .strip()
+            .lower()
+        ),
         title="New conversation",
     )
 
@@ -318,11 +460,17 @@ def get_conversations(
     customer_email: str,
     db: Session = Depends(get_db),
 ):
+    email = (
+        customer_email
+        .strip()
+        .lower()
+    )
+
     conversations = db.scalars(
         select(Conversation)
         .where(
             Conversation.customer_email
-            == customer_email
+            == email
         )
         .order_by(
             Conversation.created_at.desc()
@@ -338,6 +486,7 @@ def get_conversations(
         for conversation in conversations
     ]
 
+
 @app.patch(
     "/conversations/{conversation_id}",
     tags=["Conversations"],
@@ -348,11 +497,18 @@ def rename_conversation(
     request: ConversationRenameRequest,
     db: Session = Depends(get_db),
 ):
+    email = (
+        request.customer_email
+        .strip()
+        .lower()
+    )
+
     conversation = db.scalar(
         select(Conversation).where(
-            Conversation.id == conversation_id,
+            Conversation.id
+            == conversation_id,
             Conversation.customer_email
-            == request.customer_email,
+            == email,
         )
     )
 
@@ -383,6 +539,7 @@ def rename_conversation(
         "status": "renamed",
     }
 
+
 @app.delete(
     "/conversations/{conversation_id}",
     tags=["Conversations"],
@@ -393,11 +550,18 @@ def delete_conversation(
     customer_email: str,
     db: Session = Depends(get_db),
 ):
+    email = (
+        customer_email
+        .strip()
+        .lower()
+    )
+
     conversation = db.scalar(
         select(Conversation).where(
-            Conversation.id == conversation_id,
+            Conversation.id
+            == conversation_id,
             Conversation.customer_email
-            == customer_email,
+            == email,
         )
     )
 
@@ -415,7 +579,7 @@ def delete_conversation(
             ConversationMessage.conversation_id
             == conversation_id,
             ConversationMessage.customer_email
-            == customer_email,
+            == email,
         )
     )
 
@@ -427,6 +591,7 @@ def delete_conversation(
         "conversation_id": conversation_id,
         "status": "deleted",
     }
+
 
 @app.get(
     "/conversations/{conversation_id}/messages",
@@ -441,12 +606,18 @@ def get_messages(
     customer_email: str,
     db: Session = Depends(get_db),
 ):
+    email = (
+        customer_email
+        .strip()
+        .lower()
+    )
+
     conversation = db.scalar(
         select(Conversation).where(
             Conversation.id
             == conversation_id,
             Conversation.customer_email
-            == customer_email,
+            == email,
         )
     )
 
@@ -460,7 +631,7 @@ def get_messages(
         )
 
     messages = get_conversation_messages(
-        customer_email=customer_email,
+        customer_email=email,
         conversation_id=conversation_id,
     )
 
@@ -477,12 +648,18 @@ def agent_chat(
     request: AgentRequest,
     db: Session = Depends(get_db),
 ):
+    email = (
+        request.customer_email
+        .strip()
+        .lower()
+    )
+
     conversation = db.scalar(
         select(Conversation).where(
             Conversation.id
             == request.conversation_id,
             Conversation.customer_email
-            == request.customer_email,
+            == email,
         )
     )
 
@@ -497,9 +674,7 @@ def agent_chat(
 
     response = run_order_agent(
         message=request.message,
-        customer_email=(
-            request.customer_email
-        ),
+        customer_email=email,
         conversation_id=(
             request.conversation_id
         ),
