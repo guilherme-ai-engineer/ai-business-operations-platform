@@ -1,0 +1,11 @@
+NorthStar Electronics Billing Policy
+
+Duplicate charges must be treated as high-priority billing issues.
+
+Customers should provide the order number and transaction date when possible.
+
+Customers must never send full credit card numbers through customer support.
+
+Confirmed duplicate charges may qualify for a correction or refund.
+
+Billing disputes involving unclear transactions require human review.
