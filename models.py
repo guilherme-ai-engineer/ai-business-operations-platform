@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, Numeric, Integer, String, Text, func
 
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -78,3 +78,39 @@ class Ticket(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+
+class Order(Base):
+        __tablename__ = "orders"
+
+        id: Mapped[int] = mapped_column(
+            Integer,
+            primary_key=True,
+            index=True,
+        )
+
+        customer_email: Mapped[str] = mapped_column(
+            String(200),
+            nullable=False,
+        )
+
+        status: Mapped[str] = mapped_column(
+            String(50),
+            nullable=False,
+        )
+
+        total_amount = mapped_column(
+            Numeric(10, 2),
+            nullable=False,
+        )
+
+        estimated_delivery: Mapped[str] = mapped_column(
+            String(30),
+            nullable=False,
+        )
+
+        created_at: Mapped[datetime] = mapped_column(
+            DateTime,
+            server_default=func.now(),
+            nullable=False,
+        )
