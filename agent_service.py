@@ -5,6 +5,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from rag_service import retrieve_relevant_chunks
 
+from conversation_service import (
+    add_conversation_message,
+    get_recent_conversation,
+)
+
 from order_service import (
     get_customer_orders,
     get_order_status,
@@ -111,10 +116,32 @@ def run_order_agent(
     message: str,
     customer_email: str,
 ) -> str:
+    history = get_recent_conversation(
+        customer_email=customer_email,
+        limit=10,
+    )
+
+    conversation = [
+        {
+            "role": item["role"],
+            "content": item["content"],
+        }
+        for item in history
+    ]
+
+    conversation.append(
+        {
+            "role": "user",
+            "content": message,
+        }
+    )
+
     response = client.responses.create(
         model=OPENAI_MODEL,
         instructions=(
             "You are a customer support AI agent. "
+            "Use conversation history to understand references "
+            "such as 'it', 'that order', and follow-up questions. "
             "Use get_order_status when the customer asks "
             "about a specific order number. "
             "Use get_customer_orders when the customer asks "
@@ -122,17 +149,14 @@ def run_order_agent(
             "Use search_company_knowledge for questions about "
             "refunds, shipping policies, billing policies, "
             "warranties, and company rules. "
-            "Never invent order information or company policies. "
-            "The authenticated customer email is supplied by "
-            "the application and must be used for customer data."
+            "Never invent order information or company policies."
         ),
-        input=(
-            f"Authenticated customer email: {customer_email}\n"
-            f"Customer message: {message}"
-        ),
+        input=conversation,
         tools=TOOLS,
         tool_choice="auto",
     )
+
+    final_text = None
 
     for _ in range(5):
         tool_outputs = []
@@ -201,7 +225,8 @@ def run_order_agent(
             )
 
         if not tool_outputs:
-            return response.output_text
+            final_text = response.output_text
+            break
 
         response = client.responses.create(
             model=OPENAI_MODEL,
@@ -210,9 +235,24 @@ def run_order_agent(
             tools=TOOLS,
         )
 
-    return (
-        "I could not complete the request "
-        "after several tool calls."
+    if final_text is None:
+        final_text = (
+            "I could not complete the request "
+            "after several tool calls."
+        )
+
+    add_conversation_message(
+        customer_email=customer_email,
+        role="user",
+        content=message,
     )
+
+    add_conversation_message(
+        customer_email=customer_email,
+        role="assistant",
+        content=final_text,
+    )
+
+    return final_text
 
 

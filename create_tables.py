@@ -1,6 +1,5 @@
 from database import Base, engine
-from models import Order, Ticket
-
+from models import ConversationMessage, Order, Ticket
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
