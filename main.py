@@ -8,9 +8,10 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 
 from ai_service import analyze_support_message
 from database import get_db
-from models import Ticket
 from rag_service import invalidate_knowledge_index
 from agent_service import run_order_agent
+from models import Conversation, Ticket
+
 
 KNOWLEDGE_BASE_DIR = Path("knowledge_base")
 KNOWLEDGE_BASE_DIR.mkdir(exist_ok=True)
@@ -22,6 +23,9 @@ app = FastAPI(
     description="AI-powered customer support and business operations platform.",
     version="0.4.0",
 )
+
+class ConversationCreateRequest(BaseModel):
+    customer_email: str
 
 class AgentRequest(BaseModel):
     customer_email: str
@@ -50,18 +54,6 @@ class SupportResponse(BaseModel):
     priority: str
     suggested_response: str
     knowledge_source: str
-
-    @app.post("/agent/chat", response_model=AgentResponse)
-    def agent_chat(request: AgentRequest):
-        response = run_order_agent(
-            message=request.message,
-            customer_email=request.customer_email,
-            conversation_id=request.conversation_id,
-        )
-
-        return AgentResponse(
-            response=response,
-        )
 
 
 @app.get("/")
@@ -177,9 +169,53 @@ async def upload_document(
     "/conversations",
     response_model=ConversationResponse,
 )
-def create_conversation():
+def create_conversation(
+    request: ConversationCreateRequest,
+    db: Session = Depends(get_db),
+):
     conversation_id = str(uuid4())
+
+    conversation = Conversation(
+        id=conversation_id,
+        customer_email=request.customer_email,
+        title="New conversation",
+    )
+
+    db.add(conversation)
+    db.commit()
 
     return ConversationResponse(
         conversation_id=conversation_id,
+    )
+
+
+@app.post(
+    "/agent/chat",
+    response_model=AgentResponse,
+)
+def agent_chat(
+    request: AgentRequest,
+    db: Session = Depends(get_db),
+):
+    conversation = db.scalar(
+        select(Conversation).where(
+            Conversation.id == request.conversation_id,
+            Conversation.customer_email == request.customer_email,
+        )
+    )
+
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found for this customer.",
+        )
+
+    response = run_order_agent(
+        message=request.message,
+        customer_email=request.customer_email,
+        conversation_id=request.conversation_id,
+    )
+
+    return AgentResponse(
+        response=response,
     )
