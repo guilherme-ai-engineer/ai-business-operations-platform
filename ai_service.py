@@ -22,11 +22,14 @@ def analyze_support_message(message: str) -> dict:
     response = client.responses.create(
         model=OPENAI_MODEL,
         instructions=(
-            "You classify customer support messages for an e-commerce company. "
+            "You analyze customer support messages for an e-commerce company. "
             "Choose the best category and priority. "
+            "Also write a short, professional suggested response to the customer. "
             "Categories: billing, refund, shipping, account, technical, general. "
             "Priorities: low, medium, high. "
-            "Duplicate charges and serious payment problems should be high priority."
+            "Duplicate charges and serious payment problems should be high priority. "
+            "Do not invent order, payment, refund, or account information. "
+            "If the issue requires human review, say so clearly."
         ),
         input=message,
         text={
@@ -56,10 +59,14 @@ def analyze_support_message(message: str) -> dict:
                                 "high",
                             ],
                         },
+                        "suggested_response": {
+                            "type": "string",
+                        },
                     },
                     "required": [
                         "category",
                         "priority",
+                        "suggested_response",
                     ],
                     "additionalProperties": False,
                 },

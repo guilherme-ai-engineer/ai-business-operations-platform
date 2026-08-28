@@ -49,6 +49,12 @@ class Ticket(Base):
         nullable=False,
     )
 
+    suggested_response: Mapped[str] = mapped_column(
+        Text,
+        default="",
+        nullable=False,
+    )
+
     category: Mapped[str] = mapped_column(
         String(50),
         default="general",
