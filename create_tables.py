@@ -4,6 +4,7 @@ from models import (
     ConversationMessage,
     Order,
     Ticket,
+    TicketReply,
     User,
 )
 

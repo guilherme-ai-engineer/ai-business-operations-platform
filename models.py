@@ -202,3 +202,39 @@ class User(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+class TicketReply(Base):
+    __tablename__ = "ticket_replies"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    ticket_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        index=True,
+    )
+
+    author_email: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+    )
+
+    author_role: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+    )
+
+    message: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )

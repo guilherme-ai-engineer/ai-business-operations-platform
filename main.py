@@ -25,6 +25,7 @@ from models import (
     Conversation,
     ConversationMessage,
     Ticket,
+    TicketReply,
     User,
 )
 from rag_service import invalidate_knowledge_index
@@ -174,6 +175,17 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class TicketReplyRequest(BaseModel):
+    message: str
+
+
+class TicketReplyResponse(BaseModel):
+    reply_id: int
+    ticket_id: int
+    author_email: str
+    author_role: str
+    message: str
+    created_at: datetime
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -239,6 +251,57 @@ def home():
         "status": "running",
     }
 
+@app.post(
+    "/admin/tickets/{ticket_id}/replies",
+    response_model=TicketReplyResponse,
+    tags=["Support"],
+    summary="Reply to a support ticket",
+)
+def create_ticket_reply(
+    ticket_id: int,
+    request: TicketReplyRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found.",
+        )
+
+    message = request.message.strip()
+
+    if not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Reply cannot be empty.",
+        )
+
+    reply = TicketReply(
+        ticket_id=ticket.id,
+        author_email=current_admin.email,
+        author_role="admin",
+        message=message,
+    )
+
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+
+    return TicketReplyResponse(
+        reply_id=reply.id,
+        ticket_id=reply.ticket_id,
+        author_email=reply.author_email,
+        author_role=reply.author_role,
+        message=reply.message,
+        created_at=reply.created_at,
+    )
 
 @app.post(
     "/auth/register",
@@ -291,6 +354,52 @@ def register_user(
         user_id=user.id,
         email=user.email,
     )
+
+@app.get(
+    "/tickets/{ticket_id}/replies",
+    response_model=list[TicketReplyResponse],
+    tags=["Support"],
+    summary="Get replies for a support ticket",
+)
+def get_ticket_replies(
+    ticket_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id,
+            Ticket.email == current_user.email,
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found for this customer.",
+        )
+
+    replies = db.scalars(
+        select(TicketReply)
+        .where(
+            TicketReply.ticket_id == ticket_id
+        )
+        .order_by(
+            TicketReply.id
+        )
+    ).all()
+
+    return [
+        TicketReplyResponse(
+            reply_id=reply.id,
+            ticket_id=reply.ticket_id,
+            author_email=reply.author_email,
+            author_role=reply.author_role,
+            message=reply.message,
+            created_at=reply.created_at,
+        )
+        for reply in replies
+    ]
 
 @app.get(
     "/admin/tickets",
