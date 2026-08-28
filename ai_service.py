@@ -102,15 +102,24 @@ def analyze_support_message(message: str) -> dict:
 
     result = json.loads(response.output_text)
 
-    sources = []
+    source_details = []
 
     for chunk in relevant_chunks:
-        if chunk["source"] not in sources:
-            sources.append(chunk["source"])
+        source_details.append(
+            (
+                f"{chunk['source']} "
+                f"[chunk {chunk['chunk_index']}, "
+                f"score {chunk['score']:.3f}]"
+            )
+        )
 
-    if sources:
-        result["knowledge_source"] = ", ".join(sources)
+    if source_details:
+        result["knowledge_source"] = "; ".join(
+            source_details
+        )
     else:
-        result["knowledge_source"] = "No relevant policy found"
+        result["knowledge_source"] = (
+            "No relevant policy found"
+        )
 
     return result
