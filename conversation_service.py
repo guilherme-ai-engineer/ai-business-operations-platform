@@ -6,6 +6,7 @@ from models import ConversationMessage
 
 def add_conversation_message(
     customer_email: str,
+    conversation_id: str,
     role: str,
     content: str,
 ) -> None:
@@ -14,6 +15,7 @@ def add_conversation_message(
     try:
         message = ConversationMessage(
             customer_email=customer_email,
+            conversation_id=conversation_id,
             role=role,
             content=content,
         )
@@ -27,6 +29,7 @@ def add_conversation_message(
 
 def get_recent_conversation(
     customer_email: str,
+    conversation_id: str,
     limit: int = 10,
 ) -> list[dict]:
     db = SessionLocal()
@@ -36,7 +39,9 @@ def get_recent_conversation(
             select(ConversationMessage)
             .where(
                 ConversationMessage.customer_email
-                == customer_email
+                == customer_email,
+                ConversationMessage.conversation_id
+                == conversation_id,
             )
             .order_by(
                 ConversationMessage.id.desc()

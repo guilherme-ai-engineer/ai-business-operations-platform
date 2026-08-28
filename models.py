@@ -130,6 +130,12 @@ class ConversationMessage(Base):
         index=True,
     )
 
+    conversation_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+    )
+
     role: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

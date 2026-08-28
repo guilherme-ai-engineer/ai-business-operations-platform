@@ -115,9 +115,11 @@ TOOLS = [
 def run_order_agent(
     message: str,
     customer_email: str,
+    conversation_id: str,
 ) -> str:
     history = get_recent_conversation(
         customer_email=customer_email,
+        conversation_id=conversation_id,
         limit=10,
     )
 
@@ -243,12 +245,14 @@ def run_order_agent(
 
     add_conversation_message(
         customer_email=customer_email,
+        conversation_id=conversation_id,
         role="user",
         content=message,
     )
 
     add_conversation_message(
         customer_email=customer_email,
+        conversation_id=conversation_id,
         role="assistant",
         content=final_text,
     )

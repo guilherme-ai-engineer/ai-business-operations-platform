@@ -24,6 +24,7 @@ app = FastAPI(
 
 class AgentRequest(BaseModel):
     customer_email: str
+    conversation_id: str
     message: str
 
 class AgentResponse(BaseModel):
@@ -51,6 +52,7 @@ class SupportResponse(BaseModel):
         response = run_order_agent(
             message=request.message,
             customer_email=request.customer_email,
+            conversation_id=request.conversation_id,
         )
 
         return AgentResponse(
