@@ -10,6 +10,29 @@ from conversation_service import (
     get_recent_conversation,
 )
 
+def generate_conversation_title(
+    message: str,
+) -> str:
+    response = client.responses.create(
+        model=OPENAI_MODEL,
+        instructions=(
+            "Create a short title for a customer support conversation. "
+            "Use at most 6 words. "
+            "Return only the title. "
+            "Do not use quotation marks. "
+            "Do not use Markdown."
+        ),
+        input=message,
+    )
+
+    title = response.output_text.strip()
+
+    if not title:
+        return "New conversation"
+
+    return title[:200]
+
+
 from order_service import (
     get_customer_orders,
     get_order_status,
@@ -137,6 +160,28 @@ def run_order_agent(
             "content": message,
         }
     )
+
+    def generate_conversation_title(
+            message: str,
+    ) -> str:
+        response = client.responses.create(
+            model=OPENAI_MODEL,
+            instructions=(
+                "Create a short title for a customer support conversation. "
+                "Use at most 6 words. "
+                "Return only the title. "
+                "Do not use quotation marks. "
+                "Do not use Markdown."
+            ),
+            input=message,
+        )
+
+        title = response.output_text.strip()
+
+        if not title:
+            return "New conversation"
+
+        return title[:200]
 
     response = client.responses.create(
         model=OPENAI_MODEL,
