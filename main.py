@@ -432,6 +432,51 @@ def get_all_tickets(
         for ticket in tickets
     ]
 
+@app.get(
+    "/admin/tickets/{ticket_id}/replies",
+    response_model=list[TicketReplyResponse],
+    tags=["Support"],
+    summary="Get all replies for a support ticket",
+)
+def get_admin_ticket_replies(
+    ticket_id: int,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found.",
+        )
+
+    replies = db.scalars(
+        select(TicketReply)
+        .where(
+            TicketReply.ticket_id == ticket_id
+        )
+        .order_by(
+            TicketReply.id
+        )
+    ).all()
+
+    return [
+        TicketReplyResponse(
+            reply_id=reply.id,
+            ticket_id=reply.ticket_id,
+            author_email=reply.author_email,
+            author_role=reply.author_role,
+            message=reply.message,
+            created_at=reply.created_at,
+        )
+        for reply in replies
+    ]
+
 @app.patch(
     "/admin/tickets/{ticket_id}",
     response_model=SupportResponse,
@@ -931,4 +976,57 @@ def agent_chat(
 
     return AgentResponse(
         response=response,
+    )
+
+@app.post(
+    "/tickets/{ticket_id}/replies",
+    response_model=TicketReplyResponse,
+    tags=["Support"],
+    summary="Reply to your support ticket",
+)
+def create_customer_ticket_reply(
+    ticket_id: int,
+    request: TicketReplyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id,
+            Ticket.email == current_user.email,
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found for this customer.",
+        )
+
+    message = request.message.strip()
+
+    if not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Reply cannot be empty.",
+        )
+
+    reply = TicketReply(
+        ticket_id=ticket.id,
+        author_email=current_user.email,
+        author_role="customer",
+        message=message,
+    )
+
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+
+    return TicketReplyResponse(
+        reply_id=reply.id,
+        ticket_id=reply.ticket_id,
+        author_email=reply.author_email,
+        author_role=reply.author_role,
+        message=reply.message,
+        created_at=reply.created_at,
     )
