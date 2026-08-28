@@ -199,6 +199,8 @@ class ConversationListItem(BaseModel):
 class ConversationResponse(BaseModel):
     conversation_id: str
 
+class TicketStatusUpdateRequest(BaseModel):
+    status: str
 
 class AgentRequest(BaseModel):
     conversation_id: str
@@ -289,6 +291,97 @@ def register_user(
         user_id=user.id,
         email=user.email,
     )
+
+@app.get(
+    "/admin/tickets",
+    response_model=list[SupportResponse],
+    tags=["Support"],
+    summary="List all support tickets",
+)
+def get_all_tickets(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    tickets = db.scalars(
+        select(Ticket).order_by(
+            Ticket.id.desc()
+        )
+    ).all()
+
+    return [
+        SupportResponse(
+            ticket_id=ticket.id,
+            status=ticket.status,
+            customer_name=ticket.customer_name,
+            email=ticket.email,
+            message_received=ticket.message,
+            category=ticket.category,
+            priority=ticket.priority,
+            suggested_response=ticket.suggested_response,
+            knowledge_source=ticket.knowledge_source,
+        )
+        for ticket in tickets
+    ]
+
+@app.patch(
+    "/admin/tickets/{ticket_id}",
+    response_model=SupportResponse,
+    tags=["Support"],
+    summary="Update support ticket status",
+)
+def update_ticket_status(
+    ticket_id: int,
+    request: TicketStatusUpdateRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    allowed_statuses = {
+        "received",
+        "in_progress",
+        "resolved",
+        "closed",
+    }
+
+    status = request.status.strip().lower()
+
+    if status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid status. Allowed values: "
+                "received, in_progress, resolved, closed."
+            ),
+        )
+
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found.",
+        )
+
+    ticket.status = status
+
+    db.commit()
+    db.refresh(ticket)
+
+    return SupportResponse(
+        ticket_id=ticket.id,
+        status=ticket.status,
+        customer_name=ticket.customer_name,
+        email=ticket.email,
+        message_received=ticket.message,
+        category=ticket.category,
+        priority=ticket.priority,
+        suggested_response=ticket.suggested_response,
+        knowledge_source=ticket.knowledge_source,
+    )
+
 
 @app.get(
     "/auth/me",
