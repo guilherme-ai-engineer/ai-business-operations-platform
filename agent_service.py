@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from rag_service import retrieve_relevant_chunks
 
 from order_service import (
     get_customer_orders,
@@ -71,10 +72,38 @@ CUSTOMER_ORDERS_TOOL = {
     "strict": True,
 }
 
+COMPANY_KNOWLEDGE_TOOL = {
+    "type": "function",
+    "name": "search_company_knowledge",
+    "description": (
+        "Search company policies and documentation. "
+        "Use this for questions about refunds, shipping, "
+        "billing policies, warranties, and company rules."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": (
+                    "The customer's question to search "
+                    "against company documentation."
+                ),
+            },
+        },
+        "required": [
+            "query",
+        ],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
 
 TOOLS = [
     ORDER_STATUS_TOOL,
     CUSTOMER_ORDERS_TOOL,
+    COMPANY_KNOWLEDGE_TOOL,
 ]
 
 
@@ -85,15 +114,17 @@ def run_order_agent(
     response = client.responses.create(
         model=OPENAI_MODEL,
         instructions=(
-            "You are a customer support assistant. "
+            "You are a customer support AI agent. "
             "Use get_order_status when the customer asks "
             "about a specific order number. "
             "Use get_customer_orders when the customer asks "
-            "which orders they have or asks for their order list. "
-            "Never invent order information. "
-            "The customer's email is supplied by the application. "
-            "Never use an email address written inside the customer's "
-            "message to access another customer's data."
+            "which orders they have. "
+            "Use search_company_knowledge for questions about "
+            "refunds, shipping policies, billing policies, "
+            "warranties, and company rules. "
+            "Never invent order information or company policies. "
+            "The authenticated customer email is supplied by "
+            "the application and must be used for customer data."
         ),
         input=(
             f"Authenticated customer email: {customer_email}\n"
@@ -125,6 +156,35 @@ def run_order_agent(
                     customer_email=customer_email,
                 )
 
+            elif item.name == "search_company_knowledge":
+                chunks = retrieve_relevant_chunks(
+                    query=arguments["query"],
+                    top_k=3,
+                )
+
+                if chunks:
+                    tool_result = {
+                        "found": True,
+                        "results": [
+                            {
+                                "source": chunk["source"],
+                                "chunk_index": chunk["chunk_index"],
+                                "content": chunk["content"],
+                                "score": chunk["score"],
+                            }
+                            for chunk in chunks
+                        ],
+                    }
+
+                else:
+                    tool_result = {
+                        "found": False,
+                        "message": (
+                            "No relevant company documentation "
+                            "was found."
+                        ),
+                    }
+
             else:
                 tool_result = {
                     "error": "Unknown tool."
@@ -154,3 +214,5 @@ def run_order_agent(
         "I could not complete the request "
         "after several tool calls."
     )
+
+
