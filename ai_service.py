@@ -81,4 +81,8 @@ def analyze_support_message(message: str) -> dict:
         },
     )
 
-    return json.loads(response.output_text)
+    result = json.loads(response.output_text)
+
+    result["knowledge_source"] = relevant_document["source"]
+
+    return result

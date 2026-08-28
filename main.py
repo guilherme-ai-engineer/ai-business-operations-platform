@@ -30,6 +30,7 @@ class SupportResponse(BaseModel):
     category: str
     priority: str
     suggested_response: str
+    knowledge_source: str
 
 
 @app.get("/")
@@ -54,6 +55,7 @@ def create_support_ticket(
         category=analysis["category"],
         priority=analysis["priority"],
         suggested_response=analysis["suggested_response"],
+        knowledge_source=analysis["knowledge_source"],
     )
 
     db.add(ticket)
@@ -69,6 +71,7 @@ def create_support_ticket(
         category=ticket.category,
         priority=ticket.priority,
         suggested_response=ticket.suggested_response,
+        knowledge_source=ticket.knowledge_source,
     )
 
 
@@ -90,6 +93,7 @@ def get_tickets(
             category=ticket.category,
             priority=ticket.priority,
             suggested_response=ticket.suggested_response,
+            knowledge_source=ticket.knowledge_source,
         )
         for ticket in tickets
     ]

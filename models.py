@@ -10,6 +10,12 @@ from database import Base
 class Ticket(Base):
     __tablename__ = "tickets"
 
+    knowledge_source: Mapped[str] = mapped_column(
+        String(255),
+        default="",
+        nullable=False,
+    )
+
     id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
