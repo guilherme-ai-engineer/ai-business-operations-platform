@@ -143,6 +143,16 @@ def get_current_user(
 
     return user
 
+def get_current_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required.",
+        )
+
+    return current_user
 
 class RegisterRequest(BaseModel):
     email: str
@@ -442,6 +452,7 @@ def get_tickets(
 )
 async def upload_document(
     file: UploadFile = File(...),
+    current_admin: User = Depends(get_current_admin),
 ):
     filename = Path(
         file.filename or ""
