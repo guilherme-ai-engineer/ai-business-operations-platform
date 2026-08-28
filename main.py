@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from pathlib import Path
 from uuid import uuid4
+from datetime import datetime
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 
@@ -23,6 +24,11 @@ app = FastAPI(
     description="AI-powered customer support and business operations platform.",
     version="0.4.0",
 )
+
+class ConversationListItem(BaseModel):
+    conversation_id: str
+    title: str
+    created_at: datetime
 
 class ConversationCreateRequest(BaseModel):
     customer_email: str
@@ -219,3 +225,32 @@ def agent_chat(
     return AgentResponse(
         response=response,
     )
+
+
+@app.get(
+    "/conversations",
+    response_model=list[ConversationListItem],
+)
+def get_conversations(
+    customer_email: str,
+    db: Session = Depends(get_db),
+):
+    conversations = db.scalars(
+        select(Conversation)
+        .where(
+            Conversation.customer_email
+            == customer_email
+        )
+        .order_by(
+            Conversation.created_at.desc()
+        )
+    ).all()
+
+    return [
+        ConversationListItem(
+            conversation_id=conversation.id,
+            title=conversation.title,
+            created_at=conversation.created_at,
+        )
+        for conversation in conversations
+    ]
