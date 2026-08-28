@@ -1,12 +1,19 @@
-from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 
 from ai_service import analyze_support_message
 from database import get_db
 from models import Ticket
+from rag_service import invalidate_knowledge_index
 
+KNOWLEDGE_BASE_DIR = Path("knowledge_base")
+KNOWLEDGE_BASE_DIR.mkdir(exist_ok=True)
+
+MAX_DOCUMENT_SIZE = 1_000_000
 
 app = FastAPI(
     title="AI Business Operations Platform",
@@ -97,3 +104,45 @@ def get_tickets(
         )
         for ticket in tickets
     ]
+
+@app.post("/documents")
+async def upload_document(
+    file: UploadFile = File(...),
+):
+    filename = Path(file.filename or "").name
+
+    if not filename.lower().endswith(".txt"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .txt files are supported.",
+        )
+
+    content = await file.read()
+
+    if len(content) > MAX_DOCUMENT_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail="File is too large.",
+        )
+
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="The file must use UTF-8 encoding.",
+        )
+
+    file_path = KNOWLEDGE_BASE_DIR / filename
+    file_path.write_text(
+        text,
+        encoding="utf-8",
+    )
+
+    invalidate_knowledge_index()
+
+    return {
+        "filename": filename,
+        "status": "uploaded",
+        "rag_index": "will rebuild on next query",
+    }

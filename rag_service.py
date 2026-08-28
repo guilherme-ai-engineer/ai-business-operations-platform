@@ -22,6 +22,10 @@ MIN_RELEVANCE_SCORE = 0.35
 
 _knowledge_index = None
 
+def invalidate_knowledge_index() -> None:
+    global _knowledge_index
+    _knowledge_index = None
+
 
 def get_embedding(text: str) -> list[float]:
     response = client.embeddings.create(
@@ -133,6 +137,7 @@ def retrieve_relevant_chunks(
     query_embedding = get_embedding(query)
 
     knowledge_index = get_knowledge_index()
+
 
     results = []
 
