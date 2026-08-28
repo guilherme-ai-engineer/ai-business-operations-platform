@@ -9,6 +9,7 @@ from ai_service import analyze_support_message
 from database import get_db
 from models import Ticket
 from rag_service import invalidate_knowledge_index
+from agent_service import run_order_agent
 
 KNOWLEDGE_BASE_DIR = Path("knowledge_base")
 KNOWLEDGE_BASE_DIR.mkdir(exist_ok=True)
@@ -21,6 +22,12 @@ app = FastAPI(
     version="0.4.0",
 )
 
+class AgentRequest(BaseModel):
+    customer_email: str
+    message: str
+
+class AgentResponse(BaseModel):
+        response: str
 
 class SupportRequest(BaseModel):
     customer_name: str
@@ -38,6 +45,17 @@ class SupportResponse(BaseModel):
     priority: str
     suggested_response: str
     knowledge_source: str
+
+    @app.post("/agent/chat", response_model=AgentResponse)
+    def agent_chat(request: AgentRequest):
+        response = run_order_agent(
+            message=request.message,
+            customer_email=request.customer_email,
+        )
+
+        return AgentResponse(
+            response=response,
+        )
 
 
 @app.get("/")
