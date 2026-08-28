@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from pypdf import PdfReader
 
 
 load_dotenv()
@@ -13,17 +14,30 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is missing from .env")
 
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+
 KNOWLEDGE_BASE_DIR = Path("knowledge_base")
+
 EMBEDDING_MODEL = "text-embedding-3-small"
+
 MAX_CHUNK_SIZE = 180
+
 MIN_RELEVANCE_SCORE = 0.35
+
+SUPPORTED_EXTENSIONS = {
+    ".txt",
+    ".pdf",
+}
+
 
 _knowledge_index = None
 
+
 def invalidate_knowledge_index() -> None:
     global _knowledge_index
+
     _knowledge_index = None
 
 
@@ -53,7 +67,9 @@ def cosine_similarity(
         sum(b * b for b in vector_b)
     )
 
-    return dot_product / (magnitude_a * magnitude_b)
+    return dot_product / (
+        magnitude_a * magnitude_b
+    )
 
 
 def split_into_chunks(text: str) -> list[str]:
@@ -73,6 +89,7 @@ def split_into_chunks(text: str) -> list[str]:
 
         if len(candidate) <= MAX_CHUNK_SIZE:
             current_chunk = candidate
+
         else:
             if current_chunk:
                 chunks.append(current_chunk)
@@ -85,15 +102,58 @@ def split_into_chunks(text: str) -> list[str]:
     return chunks
 
 
-def load_chunks() -> list[dict]:
-    chunks = []
+def extract_text_from_file(
+    file_path: Path,
+) -> str:
+    extension = file_path.suffix.lower()
 
-    for file_path in KNOWLEDGE_BASE_DIR.glob("*.txt"):
-        content = file_path.read_text(
+    if extension == ".txt":
+        return file_path.read_text(
             encoding="utf-8"
         )
 
-        document_chunks = split_into_chunks(content)
+    if extension == ".pdf":
+        reader = PdfReader(str(file_path))
+
+        pages = []
+
+        for page_number, page in enumerate(
+            reader.pages,
+            start=1,
+        ):
+            text = page.extract_text() or ""
+
+            if text.strip():
+                pages.append(
+                    f"[Page {page_number}]\n"
+                    f"{text.strip()}"
+                )
+
+        return "\n\n".join(pages)
+
+    return ""
+
+
+def load_chunks() -> list[dict]:
+    chunks = []
+
+    for file_path in KNOWLEDGE_BASE_DIR.iterdir():
+        if (
+            file_path.suffix.lower()
+            not in SUPPORTED_EXTENSIONS
+        ):
+            continue
+
+        content = extract_text_from_file(
+            file_path
+        )
+
+        if not content.strip():
+            continue
+
+        document_chunks = split_into_chunks(
+            content
+        )
 
         for index, chunk in enumerate(
             document_chunks,
@@ -125,7 +185,9 @@ def get_knowledge_index() -> list[dict]:
     global _knowledge_index
 
     if _knowledge_index is None:
-        _knowledge_index = build_knowledge_index()
+        _knowledge_index = (
+            build_knowledge_index()
+        )
 
     return _knowledge_index
 
@@ -137,7 +199,6 @@ def retrieve_relevant_chunks(
     query_embedding = get_embedding(query)
 
     knowledge_index = get_knowledge_index()
-
 
     results = []
 
@@ -151,7 +212,9 @@ def retrieve_relevant_chunks(
             results.append(
                 {
                     "source": chunk["source"],
-                    "chunk_index": chunk["chunk_index"],
+                    "chunk_index": (
+                        chunk["chunk_index"]
+                    ),
                     "content": chunk["content"],
                     "score": score,
                 }
@@ -164,15 +227,29 @@ def retrieve_relevant_chunks(
 
     return results[:top_k]
 
+
 if __name__ == "__main__":
     results = retrieve_relevant_chunks(
-        "How long does a refund take?",
+        "How long is the warranty?",
         top_k=3,
     )
 
     for result in results:
-        print("Source:", result["source"])
-        print("Chunk:", result["chunk_index"])
-        print("Score:", result["score"])
+        print(
+            "Source:",
+            result["source"],
+        )
+
+        print(
+            "Chunk:",
+            result["chunk_index"],
+        )
+
+        print(
+            "Score:",
+            result["score"],
+        )
+
         print(result["content"])
+
         print("-" * 50)
