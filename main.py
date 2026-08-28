@@ -148,11 +148,17 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
 
+class CurrentUserResponse(BaseModel):
+    user_id: int
+    email: str
 
 class RegisterResponse(BaseModel):
     user_id: int
     email: str
 
+class CurrentUserResponse(BaseModel):
+    user_id: int
+    email: str
 
 class LoginRequest(BaseModel):
     email: str
@@ -165,7 +171,6 @@ class TokenResponse(BaseModel):
 
 
 class ConversationRenameRequest(BaseModel):
-    customer_email: str
     title: str
 
 
@@ -181,16 +186,11 @@ class ConversationListItem(BaseModel):
     created_at: datetime
 
 
-class ConversationCreateRequest(BaseModel):
-    customer_email: str
-
-
 class ConversationResponse(BaseModel):
     conversation_id: str
 
 
 class AgentRequest(BaseModel):
-    customer_email: str
     conversation_id: str
     message: str
 
@@ -281,6 +281,33 @@ def register_user(
         email=user.email,
     )
 
+@app.get(
+    "/auth/me",
+    response_model=CurrentUserResponse,
+    tags=["Authentication"],
+    summary="Get the current authenticated user",
+)
+def get_current_authenticated_user(
+    current_user: User = Depends(get_current_user),
+):
+    return CurrentUserResponse(
+        user_id=current_user.id,
+        email=current_user.email,
+    )
+
+@app.get(
+    "/auth/me",
+    response_model=CurrentUserResponse,
+    tags=["Authentication"],
+    summary="Get the current authenticated user",
+)
+def get_current_authenticated_user(
+    current_user: User = Depends(get_current_user),
+):
+    return CurrentUserResponse(
+        user_id=current_user.id,
+        email=current_user.email,
+    )
 
 @app.post(
     "/auth/login",
@@ -505,20 +532,14 @@ def create_conversation(
     summary="List customer conversations",
 )
 def get_conversations(
-    customer_email: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    email = (
-        customer_email
-        .strip()
-        .lower()
-    )
-
     conversations = db.scalars(
         select(Conversation)
         .where(
             Conversation.customer_email
-            == email
+            == current_user.email
         )
         .order_by(
             Conversation.created_at.desc()
@@ -543,30 +564,21 @@ def get_conversations(
 def rename_conversation(
     conversation_id: str,
     request: ConversationRenameRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    email = (
-        request.customer_email
-        .strip()
-        .lower()
-    )
-
     conversation = db.scalar(
         select(Conversation).where(
-            Conversation.id
-            == conversation_id,
+            Conversation.id == conversation_id,
             Conversation.customer_email
-            == email,
+            == current_user.email,
         )
     )
 
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Conversation not found "
-                "for this customer."
-            ),
+            detail="Conversation not found for this customer.",
         )
 
     title = request.title.strip()
@@ -587,7 +599,6 @@ def rename_conversation(
         "status": "renamed",
     }
 
-
 @app.delete(
     "/conversations/{conversation_id}",
     tags=["Conversations"],
@@ -595,31 +606,21 @@ def rename_conversation(
 )
 def delete_conversation(
     conversation_id: str,
-    customer_email: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    email = (
-        customer_email
-        .strip()
-        .lower()
-    )
-
     conversation = db.scalar(
         select(Conversation).where(
-            Conversation.id
-            == conversation_id,
+            Conversation.id == conversation_id,
             Conversation.customer_email
-            == email,
+            == current_user.email,
         )
     )
 
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Conversation not found "
-                "for this customer."
-            ),
+            detail="Conversation not found for this customer.",
         )
 
     db.execute(
@@ -627,12 +628,11 @@ def delete_conversation(
             ConversationMessage.conversation_id
             == conversation_id,
             ConversationMessage.customer_email
-            == email,
+            == current_user.email,
         )
     )
 
     db.delete(conversation)
-
     db.commit()
 
     return {
@@ -640,51 +640,35 @@ def delete_conversation(
         "status": "deleted",
     }
 
-
 @app.get(
     "/conversations/{conversation_id}/messages",
-    response_model=list[
-        ConversationMessageResponse
-    ],
+    response_model=list[ConversationMessageResponse],
     tags=["Conversations"],
     summary="Get conversation message history",
 )
 def get_messages(
     conversation_id: str,
-    customer_email: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    email = (
-        customer_email
-        .strip()
-        .lower()
-    )
-
     conversation = db.scalar(
         select(Conversation).where(
-            Conversation.id
-            == conversation_id,
+            Conversation.id == conversation_id,
             Conversation.customer_email
-            == email,
+            == current_user.email,
         )
     )
 
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Conversation not found "
-                "for this customer."
-            ),
+            detail="Conversation not found for this customer.",
         )
 
-    messages = get_conversation_messages(
-        customer_email=email,
+    return get_conversation_messages(
+        customer_email=current_user.email,
         conversation_id=conversation_id,
     )
-
-    return messages
-
 
 @app.post(
     "/agent/chat",
@@ -694,48 +678,33 @@ def get_messages(
 )
 def agent_chat(
     request: AgentRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    email = (
-        request.customer_email
-        .strip()
-        .lower()
-    )
-
     conversation = db.scalar(
         select(Conversation).where(
             Conversation.id
             == request.conversation_id,
             Conversation.customer_email
-            == email,
+            == current_user.email,
         )
     )
 
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Conversation not found "
-                "for this customer."
-            ),
+            detail="Conversation not found for this customer.",
         )
 
     response = run_order_agent(
         message=request.message,
-        customer_email=email,
-        conversation_id=(
-            request.conversation_id
-        ),
+        customer_email=current_user.email,
+        conversation_id=request.conversation_id,
     )
 
-    if (
-        conversation.title
-        == "New conversation"
-    ):
-        conversation.title = (
-            generate_conversation_title(
-                request.message
-            )
+    if conversation.title == "New conversation":
+        conversation.title = generate_conversation_title(
+            request.message
         )
 
         db.commit()
