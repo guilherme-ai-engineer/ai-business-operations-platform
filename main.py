@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 
@@ -29,6 +30,9 @@ class AgentRequest(BaseModel):
 
 class AgentResponse(BaseModel):
         response: str
+
+class ConversationResponse(BaseModel):
+    conversation_id: str
 
 class SupportRequest(BaseModel):
     customer_name: str
@@ -167,3 +171,15 @@ async def upload_document(
         "status": "uploaded",
         "rag_index": "will rebuild on next query",
     }
+
+
+@app.post(
+    "/conversations",
+    response_model=ConversationResponse,
+)
+def create_conversation():
+    conversation_id = str(uuid4())
+
+    return ConversationResponse(
+        conversation_id=conversation_id,
+    )
