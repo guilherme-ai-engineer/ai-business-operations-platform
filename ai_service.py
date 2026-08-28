@@ -24,14 +24,21 @@ def analyze_support_message(message: str) -> dict:
         top_k=3,
     )
 
-    policy_context = "\n\n".join(
-        (
-            f"Source: {chunk['source']} "
-            f"(chunk {chunk['chunk_index']})\n"
-            f"{chunk['content']}"
+    if relevant_chunks:
+        policy_context = "\n\n".join(
+            (
+                f"Source: {chunk['source']} "
+                f"(chunk {chunk['chunk_index']})\n"
+                f"{chunk['content']}"
+            )
+            for chunk in relevant_chunks
         )
-        for chunk in relevant_chunks
-    )
+    else:
+        policy_context = (
+            "No sufficiently relevant company policy was found."
+        )
+
+
     response = client.responses.create(
         model=OPENAI_MODEL,
         instructions=(
@@ -101,6 +108,9 @@ def analyze_support_message(message: str) -> dict:
         if chunk["source"] not in sources:
             sources.append(chunk["source"])
 
-    result["knowledge_source"] = ", ".join(sources)
+    if sources:
+        result["knowledge_source"] = ", ".join(sources)
+    else:
+        result["knowledge_source"] = "No relevant policy found"
 
     return result

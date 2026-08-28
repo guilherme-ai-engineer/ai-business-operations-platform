@@ -18,6 +18,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 KNOWLEDGE_BASE_DIR = Path("knowledge_base")
 EMBEDDING_MODEL = "text-embedding-3-small"
 MAX_CHUNK_SIZE = 180
+MIN_RELEVANCE_SCORE = 0.35
 
 _knowledge_index = None
 
@@ -141,14 +142,15 @@ def retrieve_relevant_chunks(
             chunk["embedding"],
         )
 
-        results.append(
-            {
-                "source": chunk["source"],
-                "chunk_index": chunk["chunk_index"],
-                "content": chunk["content"],
-                "score": score,
-            }
-        )
+        if score >= MIN_RELEVANCE_SCORE:
+            results.append(
+                {
+                    "source": chunk["source"],
+                    "chunk_index": chunk["chunk_index"],
+                    "content": chunk["content"],
+                    "score": score,
+                }
+            )
 
     results.sort(
         key=lambda item: item["score"],
