@@ -61,3 +61,36 @@ def get_recent_conversation(
 
     finally:
         db.close()
+
+
+def get_conversation_messages(
+    customer_email: str,
+    conversation_id: str,
+) -> list[dict]:
+    db = SessionLocal()
+
+    try:
+        messages = db.scalars(
+            select(ConversationMessage)
+            .where(
+                ConversationMessage.customer_email
+                == customer_email,
+                ConversationMessage.conversation_id
+                == conversation_id,
+            )
+            .order_by(
+                ConversationMessage.id
+            )
+        ).all()
+
+        return [
+            {
+                "role": message.role,
+                "content": message.content,
+                "created_at": message.created_at,
+            }
+            for message in messages
+        ]
+
+    finally:
+        db.close()

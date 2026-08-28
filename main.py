@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime
+from conversation_service import get_conversation_messages
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 
@@ -24,6 +25,11 @@ app = FastAPI(
     description="AI-powered customer support and business operations platform.",
     version="0.4.0",
 )
+
+class ConversationMessageResponse(BaseModel):
+    role: str
+    content: str
+    created_at: datetime
 
 class ConversationListItem(BaseModel):
     conversation_id: str
@@ -254,3 +260,33 @@ def get_conversations(
         )
         for conversation in conversations
     ]
+
+
+@app.get(
+    "/conversations/{conversation_id}/messages",
+    response_model=list[ConversationMessageResponse],
+)
+def get_messages(
+    conversation_id: str,
+    customer_email: str,
+    db: Session = Depends(get_db),
+):
+    conversation = db.scalar(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.customer_email == customer_email,
+        )
+    )
+
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found for this customer.",
+        )
+
+    messages = get_conversation_messages(
+        customer_email=customer_email,
+        conversation_id=conversation_id,
+    )
+
+    return messages
