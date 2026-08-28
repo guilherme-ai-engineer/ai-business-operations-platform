@@ -201,7 +201,6 @@ class AgentResponse(BaseModel):
 
 class SupportRequest(BaseModel):
     customer_name: str
-    email: str
     message: str
 
 
@@ -358,6 +357,7 @@ def login_user(
 )
 def create_support_ticket(
     request: SupportRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     analysis = analyze_support_message(
@@ -366,7 +366,7 @@ def create_support_ticket(
 
     ticket = Ticket(
         customer_name=request.customer_name,
-        email=request.email,
+        email=current_user.email,
         message=request.message,
         category=analysis["category"],
         priority=analysis["priority"],
@@ -399,13 +399,21 @@ def create_support_ticket(
     "/tickets",
     response_model=list[SupportResponse],
     tags=["Support"],
-    summary="List support tickets",
+    summary="List current user's support tickets",
 )
 def get_tickets(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     tickets = db.scalars(
-        select(Ticket).order_by(Ticket.id)
+        select(Ticket)
+        .where(
+            Ticket.email
+            == current_user.email
+        )
+        .order_by(
+            Ticket.id.desc()
+        )
     ).all()
 
     return [
@@ -426,7 +434,6 @@ def get_tickets(
         )
         for ticket in tickets
     ]
-
 
 @app.post(
     "/documents",
