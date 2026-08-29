@@ -1,8 +1,10 @@
 # AI Business Operations Platform
 
-An AI-powered backend platform for customer support and business operations, built with FastAPI, PostgreSQL, OpenAI, RAG, JWT authentication, automated testing, and Docker.
+An AI-powered B2B backend platform for customer support, business operations, and enterprise integrations.
 
-The project simulates a real B2B software platform where customers can interact with an AI support agent, access business data, maintain persistent conversations, create support tickets, and communicate with administrators.
+Built with FastAPI, PostgreSQL, OpenAI, RAG, Microsoft Graph, OAuth 2.0, JWT authentication, Docker, and automated testing.
+
+The project simulates a real business software platform where customers can interact with an AI support agent, access order information, maintain persistent conversations, create support tickets, connect external business accounts, and communicate with administrators.
 
 ## Live Demo
 
@@ -12,7 +14,7 @@ The API is publicly deployed on Render.
 
 https://ai-business-operations-platform.onrender.com/docs
 
-> The free Render instance can take up to about one minute to wake up after a period of inactivity.
+> The free Render instance may take about one minute to wake up after a period of inactivity.
 
 ---
 
@@ -25,15 +27,70 @@ https://ai-business-operations-platform.onrender.com/docs
 - Order status lookup
 - Customer order lookup
 - Company knowledge search
-- Automatic conversation title generation
+- Persistent conversation memory
+- Automatic AI-generated conversation titles
 
 ### RAG Knowledge Base
 
 - Retrieval-Augmented Generation
 - Company policy document retrieval
-- TXT and PDF document support
+- TXT and PDF support
 - Admin-only document uploads
 - Automatic knowledge index refresh
+- Source metadata in AI responses
+
+### Microsoft Graph Integration
+
+The platform includes a real Microsoft enterprise integration using OAuth 2.0 and Microsoft Graph.
+
+Features include:
+
+- Microsoft OAuth 2.0 authorization-code flow
+- Microsoft Entra ID application registration
+- MSAL authentication
+- Delegated `User.Read` permission
+- Secure OAuth `state` validation
+- Microsoft Graph `/me` API integration
+- Microsoft account connection persistence
+- Microsoft connection status endpoint
+- Microsoft account disconnect endpoint
+- Local and production OAuth redirect URIs
+- Production integration deployed on Render
+
+OAuth flow:
+
+```text
+Authenticated Platform User
+           |
+           v
+Connect Microsoft
+           |
+           v
+Microsoft Entra ID
+           |
+           v
+Microsoft Login / Consent
+           |
+           v
+Authorization Code
+           |
+           v
+FastAPI OAuth Callback
+           |
+           v
+Access Token
+           |
+           v
+Microsoft Graph
+           |
+           v
+GET /me
+           |
+           v
+PostgreSQL Connection Record
+```
+
+The platform stores Microsoft account connection metadata but does not persist the temporary Microsoft access token in plaintext.
 
 ### Authentication and Authorization
 
@@ -52,7 +109,7 @@ https://ai-business-operations-platform.onrender.com/docs
 - Rename conversations
 - Delete conversations
 - Retrieve message history
-- Store AI conversation memory in the database
+- Store AI conversation memory in PostgreSQL
 
 ### Customer Support System
 
@@ -66,11 +123,14 @@ Ticket workflow:
 
 ```text
 received
-   ↓
+   |
+   v
 in_progress
-   ↓
+   |
+   v
 resolved
-   ↓
+   |
+   v
 closed
 ```
 
@@ -79,6 +139,8 @@ Closed tickets cannot receive new replies unless they are reopened by an adminis
 ### Automated Testing
 
 The project includes automated API tests using `pytest` and FastAPI `TestClient`.
+
+The current suite contains **13 automated API tests**.
 
 Tests cover:
 
@@ -92,8 +154,18 @@ Tests cover:
 - AI agent mocking
 - Support ticket creation
 - Closed-ticket workflow
+- Microsoft connection status
+- Microsoft OAuth callback persistence
+- Microsoft account disconnection
 
-External AI calls are mocked during automated tests to keep the test suite fast, deterministic, and independent from API usage.
+External OpenAI and Microsoft API operations are mocked where appropriate during automated testing.
+
+This keeps the suite:
+
+- fast
+- deterministic
+- independent from external API availability
+- free from unnecessary API usage
 
 ---
 
@@ -105,32 +177,46 @@ External AI calls are mocked during automated tests to keep the test suite fast,
 - FastAPI
 - Pydantic
 - SQLAlchemy
+- HTTPX
 
 ### Database
 
 - PostgreSQL
 - Psycopg 3
 
-### AI
+### Artificial Intelligence
 
 - OpenAI API
-- AI tool calling
+- AI Agents
+- Tool Calling
 - Retrieval-Augmented Generation (RAG)
+
+### Enterprise Integrations
+
+- Microsoft Graph
+- Microsoft Entra ID
+- OAuth 2.0
+- MSAL
 
 ### Authentication
 
 - JWT
 - Argon2 password hashing
+- OAuth state validation
+- Role-based authorization
 
 ### Testing
 
 - pytest
 - FastAPI TestClient
+- API mocking
 
 ### Infrastructure
 
 - Docker
 - Docker Compose
+- Git
+- GitHub
 - Render
 
 ---
@@ -138,44 +224,49 @@ External AI calls are mocked during automated tests to keep the test suite fast,
 ## Architecture
 
 ```text
-                         Internet
-                            |
-                            v
-                    FastAPI Backend
-                            |
-          +-----------------+-----------------+
-          |                 |                 |
-          v                 v                 v
-   Authentication       AI Agent        Support System
-          |                 |                 |
-          |          +------+-------+         |
-          |          |              |         |
-          v          v              v         v
-      PostgreSQL   OpenAI      RAG Knowledge Base
-                       |
-                       v
-                 Business Tools
-                       |
-                       v
-                   PostgreSQL
+                         Client
+                           |
+                           v
+                       FastAPI
+                           |
+       +-------------------+-------------------+
+       |                   |                   |
+       v                   v                   v
+ Authentication        AI Agent       Microsoft Integration
+       |                   |                   |
+       |            +------+-------+           v
+       |            |              |       Microsoft Entra ID
+       |            v              v             |
+       |          OpenAI          RAG            v
+       |                            |       Microsoft Graph
+       |                            |             |
+       +----------------------------+-------------+
+                                    |
+                                    v
+                                PostgreSQL
 ```
 
-Cloud deployment:
+Production architecture:
 
 ```text
-Browser / Client
-       |
-       v
+GitHub
+   |
+   v
 Render Web Service
-       |
-       v
+   |
+   v
 Dockerized FastAPI
-       |
-       +---------> OpenAI API
-       |
-       +---------> RAG Knowledge Base
-       |
-       v
+   |
+   +--------> OpenAI API
+   |
+   +--------> Microsoft Entra ID
+   |                |
+   |                v
+   |          Microsoft Graph
+   |
+   +--------> RAG Knowledge Base
+   |
+   v
 Render PostgreSQL
 ```
 
@@ -185,39 +276,44 @@ Render PostgreSQL
 
 ```text
 ai-business-operations-platform/
-│
+|
+├── integrations/
+│   ├── __init__.py
+│   └── microsoft_graph.py
+|
 ├── routers/
 │   ├── __init__.py
 │   ├── auth.py
 │   ├── conversations.py
-│   ├── support.py
-│   └── knowledge.py
-│
+│   ├── knowledge.py
+│   ├── microsoft.py
+│   └── support.py
+|
 ├── tests/
 │   ├── conftest.py
 │   └── test_api.py
-│
+|
 ├── knowledge_base/
-│
+|
 ├── agent_service.py
 ├── ai_service.py
 ├── auth_service.py
 ├── conversation_service.py
 ├── order_service.py
 ├── rag_service.py
-│
+|
 ├── database.py
 ├── dependencies.py
 ├── models.py
 ├── main.py
-│
+|
 ├── create_tables.py
 ├── seed_orders.py
-│
+|
 ├── .env.example
 ├── .gitignore
 ├── .dockerignore
-│
+|
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -228,19 +324,13 @@ ai-business-operations-platform/
 
 ## Environment Configuration
 
-The repository contains an example configuration file:
+The repository contains:
 
 ```text
 .env.example
 ```
 
-Copy it to create your local `.env` file:
-
-```bash
-cp .env.example .env
-```
-
-Then configure the required values inside `.env`.
+Copy it to create a local environment file.
 
 Example:
 
@@ -253,41 +343,58 @@ OPENAI_MODEL=your_openai_model
 JWT_SECRET_KEY=your_jwt_secret
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=60
+
+MICROSOFT_CLIENT_ID=your_microsoft_client_id
+MICROSOFT_CLIENT_SECRET=your_microsoft_client_secret
+MICROSOFT_REDIRECT_URI=your_microsoft_redirect_uri
+MICROSOFT_TENANT=common
 ```
 
 The real `.env` file is excluded from Git and must never be committed.
+
+### OAuth Redirect URIs
+
+Local development:
+
+```text
+http://localhost:8000/integrations/microsoft/callback
+```
+
+Production:
+
+```text
+https://ai-business-operations-platform.onrender.com/integrations/microsoft/callback
+```
 
 ---
 
 ## Running with Docker
 
-Docker Compose starts both the FastAPI backend and PostgreSQL database.
-
-Build and start the services:
+Docker Compose starts both FastAPI and PostgreSQL.
 
 ```bash
 docker compose up --build
 ```
 
-The architecture will be:
+Architecture:
 
 ```text
 Docker Compose
-│
+|
 ├── FastAPI container
-│
+|
 └── PostgreSQL container
 ```
 
 PostgreSQL data is persisted using a Docker volume.
 
-Open the local Swagger documentation:
+Open Swagger:
 
 ```text
-http://127.0.0.1:8000/docs
+http://localhost:8000/docs
 ```
 
-Stop the containers with:
+Stop the containers:
 
 ```bash
 docker compose down
@@ -297,15 +404,15 @@ docker compose down
 
 ## Running Without Docker
 
-Install the dependencies:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Configure your `.env` file and make sure PostgreSQL is available.
+Configure `.env` and ensure PostgreSQL is running.
 
-Create the database tables:
+Create database tables:
 
 ```bash
 python create_tables.py
@@ -320,22 +427,28 @@ uvicorn main:app --reload
 Open:
 
 ```text
-http://127.0.0.1:8000/docs
+http://localhost:8000/docs
 ```
 
 ---
 
 ## Running Tests
 
-Run the complete automated test suite:
+Run:
 
 ```bash
 python -m pytest -v
 ```
 
-The current suite contains **10 automated API tests**.
+Expected current result:
 
-A separate temporary database is used during testing so development data is not modified.
+```text
+13 passed
+```
+
+Tests use an isolated temporary database so development data is not modified.
+
+External AI and Microsoft operations are mocked where appropriate.
 
 ---
 
@@ -389,6 +502,52 @@ GET   /admin/tickets/{ticket_id}/replies
 POST /documents
 ```
 
+### Microsoft Integration
+
+```text
+GET    /integrations/microsoft/connect
+GET    /integrations/microsoft/callback
+GET    /integrations/microsoft/status
+DELETE /integrations/microsoft
+```
+
+---
+
+## Microsoft OAuth Flow
+
+The integration uses the OAuth 2.0 authorization-code flow.
+
+```text
+1. User authenticates with the platform
+
+2. User requests:
+   GET /integrations/microsoft/connect
+
+3. FastAPI generates a signed OAuth state.
+
+4. User is sent to Microsoft.
+
+5. Microsoft authenticates the user.
+
+6. User grants delegated User.Read permission.
+
+7. Microsoft redirects to:
+   /integrations/microsoft/callback
+
+8. FastAPI validates the OAuth state.
+
+9. Authorization code is exchanged for an access token.
+
+10. FastAPI calls:
+    GET https://graph.microsoft.com/v1.0/me
+
+11. Microsoft returns the user's profile.
+
+12. Connection metadata is persisted in PostgreSQL.
+```
+
+This demonstrates integration with an external enterprise identity and API platform rather than a simulated external service.
+
 ---
 
 ## Security
@@ -402,14 +561,17 @@ The platform includes several security controls:
 - Customers can access only their own conversations
 - Customers can access only their own support tickets
 - Knowledge-base uploads require administrator access
+- OAuth state is cryptographically signed and expires
+- Microsoft client credentials remain server-side
 - Environment secrets are excluded from Git
 - API keys remain server-side
+- Microsoft access tokens are not exposed through the public API
 
 ---
 
 ## Deployment
 
-The production demo is deployed using:
+Production uses:
 
 ```text
 GitHub
@@ -422,31 +584,70 @@ Render
    └── Managed PostgreSQL Database
 ```
 
-The application automatically creates the required database tables when the Docker container starts.
+Every push to the main branch can trigger a new deployment.
 
-Live Swagger documentation:
+The Docker startup process creates missing database tables before FastAPI starts.
+
+### Live API
 
 https://ai-business-operations-platform.onrender.com/docs
 
 ---
 
+## Portfolio Skills Demonstrated
+
+This project demonstrates practical experience with:
+
+- Python backend development
+- FastAPI
+- REST APIs
+- PostgreSQL
+- SQLAlchemy
+- Authentication
+- Authorization
+- JWT
+- OAuth 2.0
+- Microsoft Graph
+- Microsoft Entra ID
+- Third-party API integration
+- JSON APIs
+- AI agents
+- OpenAI tool calling
+- RAG
+- Business workflows
+- Automated testing
+- API mocking
+- Docker
+- Git
+- GitHub
+- Cloud deployment
+- Environment configuration
+- Secret management
+
+---
+
 ## Purpose
 
-This project was built as a practical backend and AI engineering portfolio project.
+This project was built as a practical backend, AI engineering, and enterprise integration portfolio project.
 
-It demonstrates how an AI-enabled B2B application can combine:
+It demonstrates how a modern AI-enabled B2B application can combine:
 
-- REST APIs
-- authentication
-- authorization
-- relational databases
-- persistent data
-- AI agents
-- AI tool calling
-- Retrieval-Augmented Generation
-- business workflows
-- automated testing
-- Docker
-- cloud deployment
+```text
+Backend Engineering
+        +
+Artificial Intelligence
+        +
+Business Workflows
+        +
+Enterprise APIs
+        +
+Authentication
+        +
+Database Persistence
+        +
+Automated Testing
+        +
+Cloud Deployment
+```
 
-The project is designed to represent the architecture and engineering practices used in real AI-enabled business applications.
+The goal is to represent the type of architecture and engineering work used in real AI-enabled business software.
