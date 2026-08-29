@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from routers.microsoft import router as microsoft_router
 from routers.auth import router as auth_router
 from routers.conversations import router as conversations_router
 from routers.knowledge import router as knowledge_router
@@ -69,6 +70,7 @@ app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(support_router)
 app.include_router(knowledge_router)
+app.include_router(microsoft_router)
 
 
 @app.get(

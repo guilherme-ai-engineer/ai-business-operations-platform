@@ -203,6 +203,7 @@ class User(Base):
         nullable=False,
     )
 
+
 class TicketReply(Base):
     __tablename__ = "ticket_replies"
 
@@ -234,6 +235,44 @@ class TicketReply(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class MicrosoftConnection(Base):
+    __tablename__ = "microsoft_connections"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    microsoft_user_id: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    microsoft_email: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    display_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    connected_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
         nullable=False,

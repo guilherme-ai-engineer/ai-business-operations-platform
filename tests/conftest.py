@@ -14,6 +14,13 @@ os.environ["JWT_EXPIRE_MINUTES"] = "60"
 os.environ["OPENAI_API_KEY"] = "test-openai-key"
 os.environ["OPENAI_MODEL"] = "test-model"
 
+os.environ["MICROSOFT_CLIENT_ID"] = "test-microsoft-client-id"
+os.environ["MICROSOFT_CLIENT_SECRET"] = "test-microsoft-client-secret"
+os.environ["MICROSOFT_REDIRECT_URI"] = (
+    "http://localhost:8000/integrations/microsoft/callback"
+)
+os.environ["MICROSOFT_TENANT"] = "common"
+
 
 from auth_service import hash_password
 from database import Base, get_db
@@ -28,6 +35,7 @@ test_engine = create_engine(
     },
     poolclass=StaticPool,
 )
+
 
 TestingSessionLocal = sessionmaker(
     autocommit=False,

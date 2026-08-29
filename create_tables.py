@@ -2,11 +2,13 @@ from database import Base, engine
 from models import (
     Conversation,
     ConversationMessage,
+    MicrosoftConnection,
     Order,
     Ticket,
     TicketReply,
     User,
 )
+
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
