@@ -4,6 +4,16 @@ An AI-powered backend platform for customer support and business operations, bui
 
 The project simulates a real B2B software platform where customers can interact with an AI support agent, access order information, manage persistent conversations, create support tickets, and communicate with administrators.
 
+## Live Demo
+
+The API is publicly deployed on Render.
+
+**Interactive API documentation:**
+
+https://ai-business-operations-platform.onrender.com/docs
+
+> The free Render instance may take up to about one minute to wake up after a period of inactivity.
+
 ## Features
 
 ### AI Support Agent
