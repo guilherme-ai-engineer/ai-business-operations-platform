@@ -3,7 +3,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -13,14 +12,12 @@ from agent_service import (
     run_order_agent,
 )
 from ai_service import analyze_support_message
-from auth_service import (
-    create_access_token,
-    decode_access_token,
-    hash_password,
-    verify_password,
-)
 from conversation_service import get_conversation_messages
 from database import get_db
+from dependencies import (
+    get_current_admin,
+    get_current_user,
+)
 from models import (
     Conversation,
     ConversationMessage,
@@ -29,6 +26,7 @@ from models import (
     User,
 )
 from rag_service import invalidate_knowledge_index
+from routers.auth import router as auth_router
 
 
 KNOWLEDGE_BASE_DIR = Path("knowledge_base")
@@ -40,9 +38,7 @@ MAX_DOCUMENT_SIZE = 10_000_000
 TAGS_METADATA = [
     {
         "name": "System",
-        "description": (
-            "API health and system information."
-        ),
+        "description": "API health and system information.",
     },
     {
         "name": "Authentication",
@@ -55,14 +51,15 @@ TAGS_METADATA = [
         "name": "Support",
         "description": (
             "Customer support ticket creation, "
-            "AI classification, and ticket retrieval."
+            "AI classification, ticket management, "
+            "and support replies."
         ),
     },
     {
         "name": "Knowledge Base",
         "description": (
-            "Upload company documents "
-            "used by the RAG system."
+            "Upload company documents used "
+            "by the RAG system."
         ),
     },
     {
@@ -88,92 +85,15 @@ app = FastAPI(
         "AI-powered customer support platform with "
         "RAG, PostgreSQL, persistent conversation memory, "
         "document ingestion, AI tool calling, "
-        "and JWT authentication."
+        "JWT authentication, and role-based access."
     ),
     version="0.5.0",
     openapi_tags=TAGS_METADATA,
 )
 
-security = HTTPBearer()
 
+app.include_router(auth_router)
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-) -> User:
-    token = credentials.credentials
-
-    payload = decode_access_token(
-        token
-    )
-
-    if payload is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired token.",
-        )
-
-    user_id = payload.get("sub")
-
-    if user_id is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication token.",
-        )
-
-    try:
-        user_id = int(user_id)
-
-    except ValueError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication token.",
-        )
-
-    user = db.scalar(
-        select(User).where(
-            User.id == user_id
-        )
-    )
-
-    if user is None:
-        raise HTTPException(
-            status_code=401,
-            detail="User not found.",
-        )
-
-    return user
-
-def get_current_admin(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Administrator access required.",
-        )
-
-    return current_user
-
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-
-class CurrentUserResponse(BaseModel):
-    user_id: int
-    email: str
-
-class RegisterResponse(BaseModel):
-    user_id: int
-    email: str
-
-class CurrentUserResponse(BaseModel):
-    user_id: int
-    email: str
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
 
 class TicketReplyRequest(BaseModel):
     message: str
@@ -187,9 +107,26 @@ class TicketReplyResponse(BaseModel):
     message: str
     created_at: datetime
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
+
+class TicketStatusUpdateRequest(BaseModel):
+    status: str
+
+
+class SupportRequest(BaseModel):
+    customer_name: str
+    message: str
+
+
+class SupportResponse(BaseModel):
+    ticket_id: int
+    status: str
+    customer_name: str
+    email: str
+    message_received: str
+    category: str
+    priority: str
+    suggested_response: str
+    knowledge_source: str
 
 
 class ConversationRenameRequest(BaseModel):
@@ -211,8 +148,6 @@ class ConversationListItem(BaseModel):
 class ConversationResponse(BaseModel):
     conversation_id: str
 
-class TicketStatusUpdateRequest(BaseModel):
-    status: str
 
 class AgentRequest(BaseModel):
     conversation_id: str
@@ -221,23 +156,6 @@ class AgentRequest(BaseModel):
 
 class AgentResponse(BaseModel):
     response: str
-
-
-class SupportRequest(BaseModel):
-    customer_name: str
-    message: str
-
-
-class SupportResponse(BaseModel):
-    ticket_id: int
-    status: str
-    customer_name: str
-    email: str
-    message_received: str
-    category: str
-    priority: str
-    suggested_response: str
-    knowledge_source: str
 
 
 @app.get(
@@ -250,327 +168,6 @@ def home():
         "app": "AI Business Operations Platform",
         "status": "running",
     }
-
-
-@app.post(
-    "/auth/register",
-    response_model=RegisterResponse,
-    tags=["Authentication"],
-    summary="Register a new user",
-)
-def register_user(
-    request: RegisterRequest,
-    db: Session = Depends(get_db),
-):
-    email = request.email.strip().lower()
-
-    if len(request.password) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Password must contain "
-                "at least 8 characters."
-            ),
-        )
-
-    existing_user = db.scalar(
-        select(User).where(
-            User.email == email
-        )
-    )
-
-    if existing_user is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "A user with this email "
-                "already exists."
-            ),
-        )
-
-    user = User(
-        email=email,
-        password_hash=hash_password(
-            request.password
-        ),
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    return RegisterResponse(
-        user_id=user.id,
-        email=user.email,
-    )
-
-@app.get(
-    "/tickets/{ticket_id}/replies",
-    response_model=list[TicketReplyResponse],
-    tags=["Support"],
-    summary="Get replies for a support ticket",
-)
-def get_ticket_replies(
-    ticket_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    ticket = db.scalar(
-        select(Ticket).where(
-            Ticket.id == ticket_id,
-            Ticket.email == current_user.email,
-        )
-    )
-
-    if ticket is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Ticket not found for this customer.",
-        )
-
-    replies = db.scalars(
-        select(TicketReply)
-        .where(
-            TicketReply.ticket_id == ticket_id
-        )
-        .order_by(
-            TicketReply.id
-        )
-    ).all()
-
-    return [
-        TicketReplyResponse(
-            reply_id=reply.id,
-            ticket_id=reply.ticket_id,
-            author_email=reply.author_email,
-            author_role=reply.author_role,
-            message=reply.message,
-            created_at=reply.created_at,
-        )
-        for reply in replies
-    ]
-
-@app.get(
-    "/admin/tickets",
-    response_model=list[SupportResponse],
-    tags=["Support"],
-    summary="List all support tickets",
-)
-def get_all_tickets(
-    current_admin: User = Depends(get_current_admin),
-    db: Session = Depends(get_db),
-):
-    tickets = db.scalars(
-        select(Ticket).order_by(
-            Ticket.id.desc()
-        )
-    ).all()
-
-    return [
-        SupportResponse(
-            ticket_id=ticket.id,
-            status=ticket.status,
-            customer_name=ticket.customer_name,
-            email=ticket.email,
-            message_received=ticket.message,
-            category=ticket.category,
-            priority=ticket.priority,
-            suggested_response=ticket.suggested_response,
-            knowledge_source=ticket.knowledge_source,
-        )
-        for ticket in tickets
-    ]
-
-@app.post(
-    "/admin/tickets/{ticket_id}/replies",
-    response_model=TicketReplyResponse,
-    tags=["Support"],
-    summary="Reply to a support ticket",
-)
-def create_ticket_reply(
-    ticket_id: int,
-    request: TicketReplyRequest,
-    current_admin: User = Depends(get_current_admin),
-    db: Session = Depends(get_db),
-):
-    ticket = db.scalar(
-        select(Ticket).where(
-            Ticket.id == ticket_id
-        )
-    )
-
-    if ticket is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Ticket not found.",
-        )
-
-    if ticket.status == "closed":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Closed tickets cannot receive new replies. "
-                "Reopen the ticket first."
-            ),
-        )
-
-    message = request.message.strip()
-
-    if not message:
-        raise HTTPException(
-            status_code=400,
-            detail="Reply cannot be empty.",
-        )
-
-    ticket.status = "in_progress"
-
-    reply = TicketReply(
-        ticket_id=ticket.id,
-        author_email=current_admin.email,
-        author_role="admin",
-        message=message,
-    )
-
-    db.add(reply)
-    db.commit()
-    db.refresh(reply)
-
-    return TicketReplyResponse(
-        reply_id=reply.id,
-        ticket_id=reply.ticket_id,
-        author_email=reply.author_email,
-        author_role=reply.author_role,
-        message=reply.message,
-        created_at=reply.created_at,
-    )
-
-@app.patch(
-    "/admin/tickets/{ticket_id}",
-    response_model=SupportResponse,
-    tags=["Support"],
-    summary="Update support ticket status",
-)
-def update_ticket_status(
-    ticket_id: int,
-    request: TicketStatusUpdateRequest,
-    current_admin: User = Depends(get_current_admin),
-    db: Session = Depends(get_db),
-):
-    allowed_statuses = {
-        "received",
-        "in_progress",
-        "resolved",
-        "closed",
-    }
-
-    status = request.status.strip().lower()
-
-    if status not in allowed_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid status. Allowed values: "
-                "received, in_progress, resolved, closed."
-            ),
-        )
-
-    ticket = db.scalar(
-        select(Ticket).where(
-            Ticket.id == ticket_id
-        )
-    )
-
-    if ticket is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Ticket not found.",
-        )
-
-    ticket.status = status
-
-    db.commit()
-    db.refresh(ticket)
-
-    return SupportResponse(
-        ticket_id=ticket.id,
-        status=ticket.status,
-        customer_name=ticket.customer_name,
-        email=ticket.email,
-        message_received=ticket.message,
-        category=ticket.category,
-        priority=ticket.priority,
-        suggested_response=ticket.suggested_response,
-        knowledge_source=ticket.knowledge_source,
-    )
-
-
-@app.get(
-    "/auth/me",
-    response_model=CurrentUserResponse,
-    tags=["Authentication"],
-    summary="Get the current authenticated user",
-)
-def get_current_authenticated_user(
-    current_user: User = Depends(get_current_user),
-):
-    return CurrentUserResponse(
-        user_id=current_user.id,
-        email=current_user.email,
-    )
-
-@app.get(
-    "/auth/me",
-    response_model=CurrentUserResponse,
-    tags=["Authentication"],
-    summary="Get the current authenticated user",
-)
-def get_current_authenticated_user(
-    current_user: User = Depends(get_current_user),
-):
-    return CurrentUserResponse(
-        user_id=current_user.id,
-        email=current_user.email,
-    )
-
-@app.post(
-    "/auth/login",
-    response_model=TokenResponse,
-    tags=["Authentication"],
-    summary="Login and receive a JWT token",
-)
-def login_user(
-    request: LoginRequest,
-    db: Session = Depends(get_db),
-):
-    email = request.email.strip().lower()
-
-    user = db.scalar(
-        select(User).where(
-            User.email == email
-        )
-    )
-
-    if (
-        user is None
-        or not verify_password(
-            request.password,
-            user.password_hash,
-        )
-    ):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password.",
-        )
-
-    access_token = create_access_token(
-        user_id=user.id,
-        email=user.email,
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-    )
 
 
 @app.post(
@@ -649,15 +246,332 @@ def get_tickets(
             message_received=ticket.message,
             category=ticket.category,
             priority=ticket.priority,
-            suggested_response=(
-                ticket.suggested_response
-            ),
-            knowledge_source=(
-                ticket.knowledge_source
-            ),
+            suggested_response=ticket.suggested_response,
+            knowledge_source=ticket.knowledge_source,
         )
         for ticket in tickets
     ]
+
+
+@app.get(
+    "/tickets/{ticket_id}/replies",
+    response_model=list[TicketReplyResponse],
+    tags=["Support"],
+    summary="Get replies for a support ticket",
+)
+def get_ticket_replies(
+    ticket_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id,
+            Ticket.email == current_user.email,
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Ticket not found for this customer."
+            ),
+        )
+
+    replies = db.scalars(
+        select(TicketReply)
+        .where(
+            TicketReply.ticket_id == ticket_id
+        )
+        .order_by(
+            TicketReply.id
+        )
+    ).all()
+
+    return [
+        TicketReplyResponse(
+            reply_id=reply.id,
+            ticket_id=reply.ticket_id,
+            author_email=reply.author_email,
+            author_role=reply.author_role,
+            message=reply.message,
+            created_at=reply.created_at,
+        )
+        for reply in replies
+    ]
+
+
+@app.post(
+    "/tickets/{ticket_id}/replies",
+    response_model=TicketReplyResponse,
+    tags=["Support"],
+    summary="Reply to your support ticket",
+)
+def create_customer_ticket_reply(
+    ticket_id: int,
+    request: TicketReplyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id,
+            Ticket.email == current_user.email,
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Ticket not found for this customer."
+            ),
+        )
+
+    if ticket.status == "closed":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Closed tickets cannot receive "
+                "new replies."
+            ),
+        )
+
+    message = request.message.strip()
+
+    if not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Reply cannot be empty.",
+        )
+
+    ticket.status = "in_progress"
+
+    reply = TicketReply(
+        ticket_id=ticket.id,
+        author_email=current_user.email,
+        author_role="customer",
+        message=message,
+    )
+
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+
+    return TicketReplyResponse(
+        reply_id=reply.id,
+        ticket_id=reply.ticket_id,
+        author_email=reply.author_email,
+        author_role=reply.author_role,
+        message=reply.message,
+        created_at=reply.created_at,
+    )
+
+
+@app.get(
+    "/admin/tickets",
+    response_model=list[SupportResponse],
+    tags=["Support"],
+    summary="List all support tickets",
+)
+def get_all_tickets(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    tickets = db.scalars(
+        select(Ticket)
+        .order_by(
+            Ticket.id.desc()
+        )
+    ).all()
+
+    return [
+        SupportResponse(
+            ticket_id=ticket.id,
+            status=ticket.status,
+            customer_name=ticket.customer_name,
+            email=ticket.email,
+            message_received=ticket.message,
+            category=ticket.category,
+            priority=ticket.priority,
+            suggested_response=ticket.suggested_response,
+            knowledge_source=ticket.knowledge_source,
+        )
+        for ticket in tickets
+    ]
+
+
+@app.patch(
+    "/admin/tickets/{ticket_id}",
+    response_model=SupportResponse,
+    tags=["Support"],
+    summary="Update support ticket status",
+)
+def update_ticket_status(
+    ticket_id: int,
+    request: TicketStatusUpdateRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    allowed_statuses = {
+        "received",
+        "in_progress",
+        "resolved",
+        "closed",
+    }
+
+    status = request.status.strip().lower()
+
+    if status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid status. Allowed values: "
+                "received, in_progress, "
+                "resolved, closed."
+            ),
+        )
+
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found.",
+        )
+
+    ticket.status = status
+
+    db.commit()
+    db.refresh(ticket)
+
+    return SupportResponse(
+        ticket_id=ticket.id,
+        status=ticket.status,
+        customer_name=ticket.customer_name,
+        email=ticket.email,
+        message_received=ticket.message,
+        category=ticket.category,
+        priority=ticket.priority,
+        suggested_response=ticket.suggested_response,
+        knowledge_source=ticket.knowledge_source,
+    )
+
+
+@app.post(
+    "/admin/tickets/{ticket_id}/replies",
+    response_model=TicketReplyResponse,
+    tags=["Support"],
+    summary="Reply to a support ticket",
+)
+def create_ticket_reply(
+    ticket_id: int,
+    request: TicketReplyRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found.",
+        )
+
+    if ticket.status == "closed":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Closed tickets cannot receive new replies. "
+                "Reopen the ticket first."
+            ),
+        )
+
+    message = request.message.strip()
+
+    if not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Reply cannot be empty.",
+        )
+
+    ticket.status = "in_progress"
+
+    reply = TicketReply(
+        ticket_id=ticket.id,
+        author_email=current_admin.email,
+        author_role="admin",
+        message=message,
+    )
+
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+
+    return TicketReplyResponse(
+        reply_id=reply.id,
+        ticket_id=reply.ticket_id,
+        author_email=reply.author_email,
+        author_role=reply.author_role,
+        message=reply.message,
+        created_at=reply.created_at,
+    )
+
+
+@app.get(
+    "/admin/tickets/{ticket_id}/replies",
+    response_model=list[TicketReplyResponse],
+    tags=["Support"],
+    summary="Get all replies for a support ticket",
+)
+def get_admin_ticket_replies(
+    ticket_id: int,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    ticket = db.scalar(
+        select(Ticket).where(
+            Ticket.id == ticket_id
+        )
+    )
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticket not found.",
+        )
+
+    replies = db.scalars(
+        select(TicketReply)
+        .where(
+            TicketReply.ticket_id == ticket_id
+        )
+        .order_by(
+            TicketReply.id
+        )
+    ).all()
+
+    return [
+        TicketReplyResponse(
+            reply_id=reply.id,
+            ticket_id=reply.ticket_id,
+            author_email=reply.author_email,
+            author_role=reply.author_role,
+            message=reply.message,
+            created_at=reply.created_at,
+        )
+        for reply in replies
+    ]
+
 
 @app.post(
     "/documents",
@@ -810,7 +724,10 @@ def rename_conversation(
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail="Conversation not found for this customer.",
+            detail=(
+                "Conversation not found "
+                "for this customer."
+            ),
         )
 
     title = request.title.strip()
@@ -830,6 +747,7 @@ def rename_conversation(
         "title": conversation.title,
         "status": "renamed",
     }
+
 
 @app.delete(
     "/conversations/{conversation_id}",
@@ -852,7 +770,10 @@ def delete_conversation(
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail="Conversation not found for this customer.",
+            detail=(
+                "Conversation not found "
+                "for this customer."
+            ),
         )
 
     db.execute(
@@ -872,9 +793,12 @@ def delete_conversation(
         "status": "deleted",
     }
 
+
 @app.get(
     "/conversations/{conversation_id}/messages",
-    response_model=list[ConversationMessageResponse],
+    response_model=list[
+        ConversationMessageResponse
+    ],
     tags=["Conversations"],
     summary="Get conversation message history",
 )
@@ -894,13 +818,17 @@ def get_messages(
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail="Conversation not found for this customer.",
+            detail=(
+                "Conversation not found "
+                "for this customer."
+            ),
         )
 
     return get_conversation_messages(
         customer_email=current_user.email,
         conversation_id=conversation_id,
     )
+
 
 @app.post(
     "/agent/chat",
@@ -925,7 +853,10 @@ def agent_chat(
     if conversation is None:
         raise HTTPException(
             status_code=404,
-            detail="Conversation not found for this customer.",
+            detail=(
+                "Conversation not found "
+                "for this customer."
+            ),
         )
 
     response = run_order_agent(
@@ -935,73 +866,14 @@ def agent_chat(
     )
 
     if conversation.title == "New conversation":
-        conversation.title = generate_conversation_title(
-            request.message
+        conversation.title = (
+            generate_conversation_title(
+                request.message
+            )
         )
 
         db.commit()
 
     return AgentResponse(
         response=response,
-    )
-
-@app.post(
-    "/tickets/{ticket_id}/replies",
-    response_model=TicketReplyResponse,
-    tags=["Support"],
-    summary="Reply to your support ticket",
-)
-def create_customer_ticket_reply(
-    ticket_id: int,
-    request: TicketReplyRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    ticket = db.scalar(
-        select(Ticket).where(
-            Ticket.id == ticket_id,
-            Ticket.email == current_user.email,
-        )
-    )
-
-    if ticket is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Ticket not found for this customer.",
-        )
-
-    if ticket.status == "closed":
-        raise HTTPException(
-            status_code=400,
-            detail="Closed tickets cannot receive new replies.",
-        )
-
-    message = request.message.strip()
-
-    if not message:
-        raise HTTPException(
-            status_code=400,
-            detail="Reply cannot be empty.",
-        )
-
-    ticket.status = "in_progress"
-
-    reply = TicketReply(
-        ticket_id=ticket.id,
-        author_email=current_user.email,
-        author_role="customer",
-        message=message,
-    )
-
-    db.add(reply)
-    db.commit()
-    db.refresh(reply)
-
-    return TicketReplyResponse(
-        reply_id=reply.id,
-        ticket_id=reply.ticket_id,
-        author_email=reply.author_email,
-        author_role=reply.author_role,
-        message=reply.message,
-        created_at=reply.created_at,
     )
