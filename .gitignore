@@ -1,11 +1,31 @@
-.venv/
-.idea/
-__pycache__/
-*.pyc
-
+# Environment variables
 .env
-.env.*
-!.env.example
 
-*.log
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+
+# Operating system
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local temporary files
+*.tmp
