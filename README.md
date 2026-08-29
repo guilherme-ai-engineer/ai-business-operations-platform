@@ -651,4 +651,5 @@ Cloud Deployment
 ```
 
 The goal is to represent the type of architecture and engineering work used in real AI-enabled business software.
+
 Email: beckrunn.ia@gmail.com LinkedIn: I don't have
